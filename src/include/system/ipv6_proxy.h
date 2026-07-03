@@ -48,6 +48,7 @@ typedef struct {
     int id;                 /* 规则ID */
     int local_port;         /* 本地端口（设备内部端口） */
     int ipv6_port;          /* IPv6监听端口 */
+    char local_ip[64];      /* 目标内网IP（默认 127.0.0.1） */
     int enabled;            /* 是否启用 */
     time_t created_at;      /* 创建时间 */
 } IPv6ProxyRule;
@@ -112,19 +113,21 @@ int ipv6_proxy_rule_list(IPv6ProxyRule *rules, int max_count);
  * 添加规则
  * @param local_port 本地端口
  * @param ipv6_port IPv6端口
+ * @param local_ip 目标内网IP（NULL则默认127.0.0.1）
  * @return 新规则ID，-1失败
  */
-int ipv6_proxy_rule_add(int local_port, int ipv6_port);
+int ipv6_proxy_rule_add(int local_port, int ipv6_port, const char *local_ip);
 
 /**
  * 更新规则
  * @param id 规则ID
  * @param local_port 本地端口
  * @param ipv6_port IPv6端口
+ * @param local_ip 目标内网IP（NULL则默认127.0.0.1）
  * @param enabled 是否启用
  * @return 0成功，-1失败
  */
-int ipv6_proxy_rule_update(int id, int local_port, int ipv6_port, int enabled);
+int ipv6_proxy_rule_update(int id, int local_port, int ipv6_port, const char *local_ip, int enabled);
 
 /**
  * 删除规则
