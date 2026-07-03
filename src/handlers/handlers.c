@@ -2735,6 +2735,7 @@ void handle_ipv6_proxy_rules_list(struct mg_connection *c,
     json_add_int(j, "id", rules[i].id);
     json_add_int(j, "local_port", rules[i].local_port);
     json_add_int(j, "ipv6_port", rules[i].ipv6_port);
+    json_add_str(j, "local_ip", rules[i].local_ip);
     json_add_int(j, "enabled", rules[i].enabled);
     json_add_long(j, "created_at", (long)rules[i].created_at);
     json_obj_close(j);
@@ -2753,18 +2754,22 @@ void handle_ipv6_proxy_rules_add(struct mg_connection *c,
 
   int local_port = (int)mg_json_get_long(hm->body, "$.local_port", 0);
   int ipv6_port = (int)mg_json_get_long(hm->body, "$.ipv6_port", 0);
+  char *local_ip = mg_json_get_str(hm->body, "$.local_ip");
 
   if (local_port <= 0 || local_port > 65535) {
     HTTP_ERROR(c, 400, "本地端口无效");
+    if (local_ip) free(local_ip);
     return;
   }
 
   if (ipv6_port <= 0 || ipv6_port > 65535) {
     HTTP_ERROR(c, 400, "IPv6端口无效");
+    if (local_ip) free(local_ip);
     return;
   }
 
-  int new_id = ipv6_proxy_rule_add(local_port, ipv6_port);
+  int new_id = ipv6_proxy_rule_add(local_port, ipv6_port, local_ip);
+  if (local_ip) free(local_ip);
   if (new_id > 0) {
     JsonBuilder *j = json_new();
     json_obj_open(j);
@@ -2799,15 +2804,19 @@ void handle_ipv6_proxy_rules_update(struct mg_connection *c,
   int id = atoi(id_str);
   int local_port = (int)mg_json_get_long(hm->body, "$.local_port", 0);
   int ipv6_port = (int)mg_json_get_long(hm->body, "$.ipv6_port", 0);
+  char *local_ip = mg_json_get_str(hm->body, "$.local_ip");
   int enabled = (int)mg_json_get_long(hm->body, "$.enabled", 1);
 
   if (local_port <= 0 || local_port > 65535 || ipv6_port <= 0 ||
       ipv6_port > 65535) {
+    if (local_ip) free(local_ip);
     HTTP_ERROR(c, 400, "端口参数无效");
     return;
   }
 
-  if (ipv6_proxy_rule_update(id, local_port, ipv6_port, enabled) == 0) {
+  int ret = ipv6_proxy_rule_update(id, local_port, ipv6_port, local_ip, enabled);
+  if (local_ip) free(local_ip);
+  if (ret == 0) {
     HTTP_OK(c,
             "{\"status\":\"ok\",\"message\":\"规则更新成功，请重启服务生效\"}");
   } else {
