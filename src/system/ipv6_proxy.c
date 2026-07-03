@@ -89,8 +89,8 @@ static char *proxy_xrealloc(char *ptr, int size);
 static char *proxy_xntop(const struct sockaddr *sa);
 static struct addrinfo *proxy_resolve_host(const char *name, int port,
                                            int hint);
-static void proxy_make_tunnel(int rsock, int local_port);
-static void proxy_rule_process(int ipv6_port, int local_port);
+static void proxy_make_tunnel(int rsock, int local_port, const char *local_ip);
+static void proxy_rule_process(int ipv6_port, int local_port, const char *local_ip);
 static void proxy_sigchld_handler(int sig);
 
 /* IPv6防火墙规则管理 */
