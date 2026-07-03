@@ -169,18 +169,22 @@ static struct addrinfo *proxy_resolve_host(const char *name, int port,
  * 6tunnel内置代码 - 隧道转发
  *============================================================================*/
 
-static void proxy_make_tunnel(int rsock, int local_port) {
+static void proxy_make_tunnel(int rsock, int local_port, const char *local_ip) {
   char buf[4096];
   char *outbuf = NULL, *inbuf = NULL;
   int sock = -1, outlen = 0, inlen = 0;
   struct addrinfo *connect_ai = NULL;
   struct addrinfo *ai_ptr;
 
+  if (local_ip == NULL || local_ip[0] == '\0') {
+    local_ip = "127.0.0.1";
+  }
+
   /* 连接到本地端口 */
-  connect_ai = proxy_resolve_host("127.0.0.1", local_port, AF_INET);
+  connect_ai = proxy_resolve_host(local_ip, local_port, AF_INET);
 
   if (connect_ai == NULL) {
-    printf("[IPv6Proxy] 无法解析本地地址 127.0.0.1:%d\n", local_port);
+    printf("[IPv6Proxy] 无法解析本地地址 %s:%d\n", local_ip, local_port);
     goto cleanup;
   }
 
@@ -330,13 +334,17 @@ static void proxy_sigchld_handler(int sig) {
   signal(SIGCHLD, proxy_sigchld_handler);
 }
 
-static void proxy_rule_process(int ipv6_port, int local_port) {
+static void proxy_rule_process(int ipv6_port, int local_port, const char *local_ip) {
   int listen_fd, jeden = 1;
   struct addrinfo *ai;
   struct addrinfo *ai_ptr;
 
-  printf("[IPv6Proxy] 规则进程启动: IPv6端口%d -> 本地端口%d\n", ipv6_port,
-         local_port);
+  if (local_ip == NULL || local_ip[0] == '\0') {
+    local_ip = "127.0.0.1";
+  }
+
+  printf("[IPv6Proxy] 规则进程启动: IPv6端口%d -> %s:%d\n", ipv6_port,
+         local_ip, local_port);
 
   /* 解析IPv6监听地址 */
   ai = proxy_resolve_host(NULL, ipv6_port, AF_INET6);
@@ -433,7 +441,7 @@ static void proxy_rule_process(int ipv6_port, int local_port) {
     if (ret == 0) {
       /* 子进程处理连接 */
       close(listen_fd);
-      proxy_make_tunnel(client_fd, local_port);
+      proxy_make_tunnel(client_fd, local_port, local_ip);
       if (client_addr)
         free(client_addr);
       exit(0);
@@ -469,6 +477,7 @@ static int create_ipv6_proxy_tables(void) {
                      "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                      "local_port INTEGER NOT NULL,"
                      "ipv6_port INTEGER NOT NULL,"
+                     "local_ip TEXT NOT NULL DEFAULT '127.0.0.1',"
                      "enabled INTEGER DEFAULT 1,"
                      "created_at INTEGER NOT NULL"
                      ");";
@@ -1011,7 +1020,8 @@ int ipv6_proxy_rule_list(IPv6ProxyRule *rules, int max_count) {
 
   const char *sql =
       "SELECT id || '|' || local_port || '|' || ipv6_port || '|' || "
-      "enabled || '|' || created_at FROM ipv6_proxy_rules ORDER BY id ASC;";
+      "local_ip || '|' || enabled || '|' || created_at "
+      "FROM ipv6_proxy_rules ORDER BY id ASC;";
 
   pthread_mutex_lock(&g_ipv6_proxy_mutex);
   int ret = db_query_string(sql, output, 32 * 1024);
@@ -1040,12 +1050,12 @@ int ipv6_proxy_rule_list(IPv6ProxyRule *rules, int max_count) {
     }
 
     /* 解析字段 */
-    char *fields[5] = {NULL};
+    char *fields[6] = {NULL};
     int field_count = 0;
     char *p = line;
     char *start = p;
 
-    while (*p && field_count < 5) {
+    while (*p && field_count < 6) {
       if (*p == '|') {
         *p = '\0';
         fields[field_count++] = start;
@@ -1053,16 +1063,21 @@ int ipv6_proxy_rule_list(IPv6ProxyRule *rules, int max_count) {
       }
       p++;
     }
-    if (field_count < 5 && start) {
+    if (field_count < 6 && start) {
       fields[field_count++] = start;
     }
 
-    if (field_count >= 5) {
+    if (field_count >= 6) {
       rules[count].id = atoi(fields[0]);
       rules[count].local_port = atoi(fields[1]);
       rules[count].ipv6_port = atoi(fields[2]);
-      rules[count].enabled = atoi(fields[3]);
-      rules[count].created_at = (time_t)atol(fields[4]);
+      strncpy(rules[count].local_ip, fields[3], sizeof(rules[count].local_ip) - 1);
+      rules[count].local_ip[sizeof(rules[count].local_ip) - 1] = '\0';
+      if (rules[count].local_ip[0] == '\0') {
+        strcpy(rules[count].local_ip, "127.0.0.1");
+      }
+      rules[count].enabled = atoi(fields[4]);
+      rules[count].created_at = (time_t)atol(fields[5]);
       count++;
     }
 
@@ -1074,8 +1089,9 @@ int ipv6_proxy_rule_list(IPv6ProxyRule *rules, int max_count) {
   return count;
 }
 
-int ipv6_proxy_rule_add(int local_port, int ipv6_port) {
-  char sql[512];
+int ipv6_proxy_rule_add(int local_port, int ipv6_port, const char *local_ip) {
+  char sql[1024];
+  char escaped_ip[128] = "127.0.0.1";
 
   if (local_port <= 0 || local_port > 65535 || ipv6_port <= 0 ||
       ipv6_port > 65535) {
@@ -1083,13 +1099,17 @@ int ipv6_proxy_rule_add(int local_port, int ipv6_port) {
     return -1;
   }
 
+  if (local_ip && local_ip[0] != '\0') {
+    db_escape_string(local_ip, escaped_ip, sizeof(escaped_ip));
+  }
+
   time_t now = time(NULL);
 
   snprintf(sql, sizeof(sql),
-           "INSERT INTO ipv6_proxy_rules (local_port, ipv6_port, enabled, "
+           "INSERT INTO ipv6_proxy_rules (local_port, ipv6_port, local_ip, enabled, "
            "created_at) "
-           "VALUES (%d, %d, 1, %ld);",
-           local_port, ipv6_port, (long)now);
+           "VALUES (%d, %d, '%s', 1, %ld);",
+           local_port, ipv6_port, escaped_ip, (long)now);
 
   pthread_mutex_lock(&g_ipv6_proxy_mutex);
   int ret = db_execute(sql);
@@ -1108,18 +1128,23 @@ int ipv6_proxy_rule_add(int local_port, int ipv6_port) {
   return -1;
 }
 
-int ipv6_proxy_rule_update(int id, int local_port, int ipv6_port, int enabled) {
-  char sql[512];
+int ipv6_proxy_rule_update(int id, int local_port, int ipv6_port, const char *local_ip, int enabled) {
+  char sql[1024];
+  char escaped_ip[128] = "127.0.0.1";
 
   if (id <= 0 || local_port <= 0 || local_port > 65535 || ipv6_port <= 0 ||
       ipv6_port > 65535) {
     return -1;
   }
 
+  if (local_ip && local_ip[0] != '\0') {
+    db_escape_string(local_ip, escaped_ip, sizeof(escaped_ip));
+  }
+
   snprintf(sql, sizeof(sql),
            "UPDATE ipv6_proxy_rules SET local_port=%d, ipv6_port=%d, "
-           "enabled=%d WHERE id=%d;",
-           local_port, ipv6_port, enabled ? 1 : 0, id);
+           "local_ip='%s', enabled=%d WHERE id=%d;",
+           local_port, ipv6_port, escaped_ip, enabled ? 1 : 0, id);
 
   pthread_mutex_lock(&g_ipv6_proxy_mutex);
   int ret = db_execute(sql);
@@ -1222,9 +1247,10 @@ int ipv6_proxy_start(void) {
     int cur_ipv6_port = rules[i].ipv6_port;
     int cur_local_port = rules[i].local_port;
     int cur_id = rules[i].id;
+    const char *cur_local_ip = rules[i].local_ip;
 
-    printf("[IPv6Proxy] 准备启动规则 %d: IPv6端口 %d -> 本地端口 %d\n", cur_id,
-           cur_ipv6_port, cur_local_port);
+    printf("[IPv6Proxy] 准备启动规则 %d: IPv6端口 %d -> %s:%d\n", cur_id,
+           cur_ipv6_port, cur_local_ip, cur_local_port);
 
     pid_t pid = fork();
 
@@ -1235,9 +1261,9 @@ int ipv6_proxy_start(void) {
 
     if (pid == 0) {
       /* 子进程 - 使用保存的局部变量 */
-      printf("[IPv6Proxy] 子进程启动 (PID=%d): IPv6端口 %d -> 本地端口 %d\n",
-             getpid(), cur_ipv6_port, cur_local_port);
-      proxy_rule_process(cur_ipv6_port, cur_local_port);
+      printf("[IPv6Proxy] 子进程启动 (PID=%d): IPv6端口 %d -> %s:%d\n",
+             getpid(), cur_ipv6_port, cur_local_ip, cur_local_port);
+      proxy_rule_process(cur_ipv6_port, cur_local_port, cur_local_ip);
       exit(0); /* 不应该到达这里 */
     }
 
