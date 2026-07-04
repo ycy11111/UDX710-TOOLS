@@ -6,7 +6,7 @@
 #include <string.h>
 #include "mongoose.h"
 
-/* Static file directory - 使用绝对路径避免 daemon() 后 CWD 变化的问题 */
+/* Static file directory - 浣跨敤缁濆璺緞閬垮厤 daemon() 鍚?CWD 鍙樺寲鐨勯棶棰?*/
 #define STATIC_DIR "/home/root/6677/dist"
 
 /* Static file service options */

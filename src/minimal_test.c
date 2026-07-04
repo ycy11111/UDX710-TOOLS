@@ -2,9 +2,9 @@
 #include <unistd.h>
 
 int main() {
-  printf("=== MINIMAL TEST ===\n");
-  fprintf(stderr, "stderr message\n");
-  sleep(10);
-  printf("exiting\n");
-  return 0;
+    printf("HELLO_WORLD_STARTED\n");
+    fflush(stdout);
+    sleep(5);
+    printf("HELLO_WORLD_EXITING\n");
+    return 0;
 }

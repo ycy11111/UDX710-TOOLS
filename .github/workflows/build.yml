@@ -1,0 +1,78 @@
+name: Build UDX710 Tools
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-arm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nodejs npm wget bzip2
+
+      - name: Download Bootlin aarch64 toolchain
+        run: |
+          wget -q "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2020.08-1.tar.bz2"
+          tar xf aarch64--glibc--stable-2020.08-1.tar.bz2
+          echo "CROSS_COMPILE=$PWD/aarch64--glibc--stable-2020.08-1/bin/aarch64-linux-" >> $GITHUB_ENV
+
+      - name: Build minimal test
+        run: |
+          CC=${CROSS_COMPILE}gcc
+          ${CC} -static -o src/minimal_test src/minimal_test.c
+          ${CROSS_COMPILE}strip src/minimal_test
+          file src/minimal_test
+          echo "---"
+          # Also build without static
+          ${CC} -o src/minimal_test_dyn src/minimal_test.c
+          ${CROSS_COMPILE}strip src/minimal_test_dyn
+          file src/minimal_test_dyn
+          ${CROSS_COMPILE}readelf -l src/minimal_test_dyn | grep 'interpreter\|INTERP'
+          ${CROSS_COMPILE}readelf -d src/minimal_test_dyn | grep NEEDED
+
+      - name: Build mongoose-only test
+        run: |
+          CC=${CROSS_COMPILE}gcc
+          ${CC} -Isrc -Wall -O2 -g -o src/mongoose_only_test src/mongoose_only.c src/mongoose.c
+          ${CROSS_COMPILE}strip src/mongoose_only_test
+          file src/mongoose_only_test
+
+      - name: build web
+        run: |
+          cd web
+          npm install && npm run build
+
+      - name: build server
+        run: |
+          cd src
+          make GLIB_DIR=$(cd .. && pwd) CC=${CROSS_COMPILE}gcc AR=${CROSS_COMPILE}ar STRIP=${CROSS_COMPILE}strip
+
+      - name: Verify binaries
+        run: |
+          file src/minimal_test src/minimal_test_dyn src/mongoose_only_test src/build/ofono-server
+          echo "--- minimal_test dyn deps ---"
+          ${CROSS_COMPILE}readelf -d src/minimal_test_dyn | grep NEEDED || true
+          echo "--- server dyn deps ---"
+          ${CROSS_COMPILE}readelf -d src/build/ofono-server | grep NEEDED || true
+
+      - name: dopack
+        run: |
+          mkdir -p output/6677
+          cp src/build/ofono-server output/6677/server
+          cp -r web/dist output/6677/
+          cp src/mongoose_only_test output/
+          cp src/minimal_test output/
+          cp src/minimal_test_dyn output/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: udx710-tools
+          path: output

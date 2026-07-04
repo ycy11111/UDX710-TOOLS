@@ -509,7 +509,7 @@ static int create_ipv6_proxy_tables(void) {
     return ret3;
   }
 
-  /* 迁移：尝试添加 local_ip 列（兼容旧版本数据库，列已存在则忽略） */
+  /* 迁移：为旧数据库添加 local_ip 列 */
   db_execute("ALTER TABLE ipv6_proxy_rules ADD COLUMN local_ip TEXT NOT NULL DEFAULT '127.0.0.1';");
 
   printf("[IPv6Proxy] 数据库表创建/验证成功\n");

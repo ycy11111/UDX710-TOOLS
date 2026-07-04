@@ -1,13 +1,11 @@
 # Makefile for ofono-server - Cross compile for aarch64-linux-gnu
 
 CC = aarch64-linux-gnu-gcc
-# 移除 -DDISABLE_PRINTF 以启用调试输出
-# 添加 -DDISABLE_PRINTF 禁用所有printf输出
-# 添加 -DMG_ENABLE_IPV6=1 启用IPv6支持
+# 绉婚櫎 -DDISABLE_PRINTF 浠ュ惎鐢ㄨ皟璇曡緭鍑?# 娣诲姞 -DDISABLE_PRINTF 绂佺敤鎵€鏈塸rintf杈撳嚭
+# 娣诲姞 -DMG_ENABLE_IPV6=1 鍚敤IPv6鏀寔
 CFLAGS = -Wall -O2 -g -DMG_ENABLE_LINES=0 -include debug.h -DDISABLE_PRINTF
 
-# GLib 库路径
-GLIB_DIR = ..
+# GLib 搴撹矾寰?GLIB_DIR = ..
 INCLUDES = -I$(GLIB_DIR)/include/glib-2.0 \
            -I$(GLIB_DIR)/lib/glib-2.0/include \
            -I$(GLIB_DIR)/include/gio-unix-2.0 \
@@ -19,8 +17,7 @@ LIBS = -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lgmodule-2.0 -lpthread
 BUILD_DIR = build
 TARGET = $(BUILD_DIR)/ofono-server
 
-# 源文件分类
-MAIN_SRCS = main.c mongoose.c packed_fs.c
+# 婧愭枃浠跺垎绫?MAIN_SRCS = main.c mongoose.c packed_fs.c
 HANDLER_SRCS = handlers/http_server.c handlers/handlers.c
 SYSTEM_SRCS = system/sysinfo.c system/modem.c system/airplane.c system/ofono.c \
               system/exec_utils.c system/advanced.c \
@@ -49,7 +46,7 @@ $(TARGET): $(OBJS)
 	$(STRIP) $@
 	@echo "Build complete: $@"
 
-# 主目录源文件
+# 涓荤洰褰曟簮鏂囦欢
 $(BUILD_DIR)/main.o: main.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
@@ -59,14 +56,14 @@ $(BUILD_DIR)/mongoose.o: mongoose.c | $(BUILD_DIR)
 $(BUILD_DIR)/packed_fs.o: packed_fs.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
-# handlers 目录
+# handlers 鐩綍
 $(BUILD_DIR)/http_server.o: handlers/http_server.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
 $(BUILD_DIR)/handlers.o: handlers/handlers.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
-# system 目录
+# system 鐩綍
 $(BUILD_DIR)/sysinfo.o: system/sysinfo.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
